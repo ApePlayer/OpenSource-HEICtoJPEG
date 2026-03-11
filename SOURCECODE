@@ -1,0 +1,177 @@
+import os
+import tkinter as tk
+from tkinter import filedialog, messagebox, ttk
+from PIL import Image
+import pillow_heif
+
+# Registriert den HEIF-Öffner bei Pillow
+pillow_heif.register_heif_opener()
+
+# --- Globale Status-Variablen ---
+is_cancelled = False
+
+# --- Übersetzungen ---
+translations = {
+    "Deutsch": {
+        "title": "HEIC zu JPEG Konverter",
+        "btn_start": "Starten",
+        "btn_cancel": "Abbrechen",
+        "status_ready": "Bereit.",
+        "status_start": "Wähle Ordner...",
+        "status_processing": "Verarbeite: {} ({}/{})",
+        "status_cancelling": "Wird abgebrochen...",
+        "msg_no_files": "In diesem Ordner wurden keine .heic Dateien gefunden.",
+        "msg_success": "Erfolg! {} Bilder wurden konvertiert.",
+        "msg_cancelled": "Die Konvertierung wurde gestoppt.",
+        "select_in": "Wähle den Ordner mit HEIC-Dateien",
+        "select_out": "Wähle den Zielordner für JPEGs",
+        "lang_label": "Sprache:"
+    },
+    "English": {
+        "title": "HEIC to JPEG Converter",
+        "btn_start": "Start",
+        "btn_cancel": "Cancel",
+        "status_ready": "Ready.",
+        "status_start": "Select folders...",
+        "status_processing": "Processing: {} ({}/{})",
+        "status_cancelling": "Cancelling...",
+        "msg_no_files": "No .heic files found in this folder.",
+        "msg_success": "Success! {} images converted.",
+        "msg_cancelled": "Conversion was stopped.",
+        "select_in": "Select folder with HEIC files",
+        "select_out": "Select destination folder for JPEGs",
+        "lang_label": "Language:"
+    }
+}
+
+def update_ui_language(*args):
+    """Aktualisiert alle Texte in der GUI basierend auf der Sprachwahl."""
+    lang = lang_var.get()
+    t = translations[lang]
+    
+    root.title(t["title"])
+    main_label.config(text=t["title"])
+    btn_start.config(text=t["btn_start"])
+    btn_cancel.config(text=t["btn_cancel"])
+    lang_info_label.config(text=t["lang_label"])
+    if not progress_bar["value"] > 0:
+        status_label.config(text=t["status_ready"])
+
+def start_conversion():
+    global is_cancelled
+    is_cancelled = False
+    lang = lang_var.get()
+    t = translations[lang]
+
+    # Ordner auswählen
+    input_path = filedialog.askdirectory(title=t["select_in"])
+    if not input_path: return
+
+    output_path = filedialog.askdirectory(title=t["select_out"])
+    if not output_path: return
+
+    # Dateien filtern
+    files = [f for f in os.listdir(input_path) if f.lower().endswith(".heic")]
+    
+    if not files:
+        messagebox.showwarning("Info", t["msg_no_files"])
+        return
+
+    # UI Sperren / Aktivieren
+    btn_start.config(state="disabled")
+    btn_cancel.config(state="normal")
+    lang_menu.config(state="disabled")
+    progress_bar["maximum"] = len(files)
+    progress_bar["value"] = 0
+    
+    count = 0
+    for filename in files:
+        if is_cancelled:
+            messagebox.showinfo("Info", t["msg_cancelled"])
+            break
+
+        try:
+            full_input_path = os.path.join(input_path, filename)
+            img = Image.open(full_input_path)
+            
+            # EXIF Daten sichern
+            exif = img.info.get("exif")
+            
+            target_name = os.path.splitext(filename)[0] + ".jpg"
+            full_output_path = os.path.join(output_path, target_name)
+            
+            # Konvertierung und Metadaten-Erhalt
+            img.convert("RGB").save(full_output_path, "JPEG", quality=95, exif=exif)
+            
+            count += 1
+            progress_bar["value"] = count
+            status_label.config(text=t["status_processing"].format(filename, count, len(files)))
+            
+            # GUI aktuell halten
+            root.update()
+            
+        except Exception as e:
+            print(f"Error: {e}")
+
+    if not is_cancelled:
+        messagebox.showinfo(t["msg_success"].split('!')[0], t["msg_success"].format(count))
+    
+    # GUI zurücksetzen
+    btn_start.config(state="normal")
+    btn_cancel.config(state="disabled")
+    lang_menu.config(state="normal")
+    status_label.config(text=t["status_ready"])
+    progress_bar["value"] = 0
+
+def cancel_conversion():
+    global is_cancelled
+    is_cancelled = True
+    status_label.config(text=translations[lang_var.get()]["status_cancelling"])
+
+# --- GUI Erstellung ---
+root = tk.Tk()
+root.geometry("500x350")
+
+# Sprach-Variable
+lang_var = tk.StringVar(value="Deutsch")
+lang_var.trace_add("write", update_ui_language)
+
+# Top Bar (Dropdown links oben)
+top_bar = tk.Frame(root)
+top_bar.pack(side="top", fill="x", padx=10, pady=5)
+
+lang_info_label = tk.Label(top_bar, text="Sprache:", font=("Arial", 9))
+lang_info_label.pack(side="left")
+
+lang_menu = ttk.OptionMenu(top_bar, lang_var, "Deutsch", "Deutsch", "English")
+lang_menu.pack(side="left", padx=5)
+
+# Hauptinhalt
+main_label = tk.Label(root, text="HEIC zu JPEG Konverter", font=("Arial", 18, "bold"))
+main_label.pack(pady=20)
+
+button_frame = tk.Frame(root)
+button_frame.pack(pady=10)
+
+btn_start = tk.Button(button_frame, text="Starten", font=("Arial", 11), 
+                      command=start_conversion, bg="#2ecc71", fg="white", width=15)
+btn_start.pack(side="left", padx=10)
+
+btn_cancel = tk.Button(button_frame, text="Abbrechen", font=("Arial", 11), 
+                       command=cancel_conversion, bg="#e74c3c", fg="white", width=15, state="disabled")
+btn_cancel.pack(side="left", padx=10)
+
+# Progress Bereich
+progress_frame = tk.Frame(root)
+progress_frame.pack(pady=30, padx=40, fill="x")
+
+status_label = tk.Label(progress_frame, text="Bereit.", font=("Arial", 9))
+status_label.pack()
+
+progress_bar = ttk.Progressbar(progress_frame, orient="horizontal", length=350, mode="determinate")
+progress_bar.pack(pady=10, fill="x")
+
+# Initiales UI Update
+update_ui_language()
+
+root.mainloop()
