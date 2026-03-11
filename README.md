@@ -1,4 +1,4 @@
-HEIC to JPEG Converter Pro
+THE Open Source HEIC to JPEG Converter
 
 Ein einfaches, schnelles Tool zur Batch-Konvertierung von HEIC-Bildern in das JPEG-Format unter vollständiger Beibehaltung der EXIF-Metadaten.
 
